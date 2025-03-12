@@ -10,6 +10,9 @@ import requests
 
 
 irradiation_time = 12 * 3600  # 12 hours
+TBR = 2.00e-3
+salt_volume = 1  # L
+salt_volume *= 1e-3  # m3
 
 
 # NOTE need to override these methods in ParticleSource until a
@@ -85,7 +88,7 @@ dt = F.Stepsize(
     growth_factor=1.2,
     cutback_factor=0.9,
     target_nb_iterations=4,
-    milestones=[12 * 3600],
+    milestones=[irradiation_time],
 )
 
 my_model.settings = F.Settings(
