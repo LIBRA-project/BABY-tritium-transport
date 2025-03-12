@@ -13,3 +13,4 @@ dependencies:
   - pip:
     - git+https://github.com/LIBRA-project/libra-toolbox@v0.5
     - openmc-data-downloader
+    - git+https://github.com/festim-dev/openmc2dolfinx
