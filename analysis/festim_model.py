@@ -60,8 +60,11 @@ class TopSurface(F.SurfaceSubdomain):
 T = F.Species("T")
 my_model.species = [T]
 
-# salt = F.Material(D_0=0.6e-6, E_D=0.42)
-salt = F.Material(D_0=6.75e-6, E_D=0.42)
+flibe_salt = F.Material(D_0=3.12e-7, E_D=0.37)
+flinak_salt = F.Material(D_0=4.01e-7, E_D=0.31)
+
+salt = flibe_salt
+
 volume = F.VolumeSubdomain(id=1, material=salt)
 top_boundary = TopSurface(id=2)
 
