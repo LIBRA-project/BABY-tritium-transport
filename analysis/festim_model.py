@@ -5,6 +5,7 @@ from dolfinx.log import set_log_level, LogLevel
 import numpy as np
 import matplotlib.pyplot as plt
 from libra_toolbox.tritium.model import quantity_to_activity, ureg
+from scipy.integrate import cumulative_trapezoid
 
 
 # NOTE need to override these methods in ParticleSource until a
@@ -108,7 +109,6 @@ axs[0].plot(np.array(top_release.t) * s_to_day, top_release.data, marker="o")
 axs[0].set_ylabel("Tritium flux [T s-1]")
 
 # compute cumulative release as int(release dt)
-from scipy.integrate import cumulative_trapezoid
 
 cumulative_release = cumulative_trapezoid(top_release.data, x=top_release.t, initial=0)
 
