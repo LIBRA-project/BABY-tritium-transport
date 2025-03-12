@@ -1,7 +1,10 @@
 import festim as F
 from openmc2dolfinx import UnstructuredMeshReader
 import dolfinx
+from dolfinx.log import set_log_level, LogLevel
 import numpy as np
+import matplotlib.pyplot as plt
+from libra_toolbox.tritium.model import quantity_to_activity, ureg
 
 
 # NOTE need to override these methods in ParticleSource until a
@@ -83,14 +86,40 @@ my_model.settings = F.Settings(
     stepsize=dt,
 )
 
+top_release = F.SurfaceFlux(field=T, surface=top_boundary)
+
 my_model.exports = [
     F.VTXSpeciesExport("tritium_concentration.bp", field=T),
+    top_release,
 ]
-
-from dolfinx.log import set_log_level, LogLevel
 
 # set_log_level(LogLevel.INFO)
 
 my_model.initialise()
 
 my_model.run()
+
+
+s_to_day = 1 / 3600 / 24
+
+fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
+
+axs[0].plot(np.array(top_release.t) * s_to_day, top_release.data, marker="o")
+axs[0].set_ylabel("Tritium flux [T s-1]")
+
+# compute cumulative release as int(release dt)
+from scipy.integrate import cumulative_trapezoid
+
+cumulative_release = cumulative_trapezoid(top_release.data, x=top_release.t, initial=0)
+
+# convert to Bq
+cumulative_release = (
+    quantity_to_activity(ureg.Quantity(cumulative_release, "particle"))
+    .to(ureg.Bq)
+    .magnitude
+)
+
+axs[1].plot(np.array(top_release.t) * s_to_day, cumulative_release, marker="o")
+axs[1].set_ylabel("Cumulative tritium release [Bq]")
+plt.xlabel("Time [day]")
+plt.show()
