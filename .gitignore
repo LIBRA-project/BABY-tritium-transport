@@ -178,3 +178,7 @@ cython_debug/
 # Gmsh files
 *.vtk
 *.msh
+
+
+# festim files
+*.bp
