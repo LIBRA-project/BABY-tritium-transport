@@ -3,8 +3,9 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.7
+  - python
   - numpy
+  - pyvista
   - openmc
   - python-gmsh
   - matplotlib
@@ -13,3 +14,4 @@ dependencies:
   - pip:
     - git+https://github.com/LIBRA-project/libra-toolbox@v0.5
     - openmc-data-downloader
+    - git+https://github.com/festim-dev/openmc2dolfinx
