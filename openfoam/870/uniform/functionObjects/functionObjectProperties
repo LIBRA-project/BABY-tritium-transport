@@ -1,0 +1,68 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2112                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    arch        "LSB;label=32;scalar=64";
+    class       dictionary;
+    location    "870/uniform/functionObjects";
+    object      functionObjectProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+cdf7e925f5746741c316f5fbcf39ad0dfca90775
+{
+    fieldMinMax1
+    {
+        scalar
+        {
+            min(mag(U))     0;
+            max(mag(U))     0.01657464669758589;
+            min(p_rgh)      0.6110586001820548;
+            max(p_rgh)      0.6345517638051288;
+            min(p)          -0.02443301440552303;
+            max(p)          0.6328690421089932;
+            min(T)          898;
+            max(T)          1023;
+        }
+        label
+        {
+            min(mag(U))_cell 3100;
+            min(mag(U))_processor 0;
+            max(mag(U))_cell 3306;
+            max(mag(U))_processor 15;
+            min(p_rgh)_cell 1576;
+            min(p_rgh)_processor 1;
+            max(p_rgh)_cell 704;
+            max(p_rgh)_processor 20;
+            min(p)_cell     1030;
+            min(p)_processor 20;
+            max(p)_cell     2406;
+            max(p)_processor 13;
+            min(T)_cell     131;
+            min(T)_processor 13;
+            max(T)_cell     3100;
+            max(T)_processor 0;
+        }
+        vector
+        {
+            min(mag(U))_position ( 0.00438975 2.68724e-05 0.0637298 );
+            max(mag(U))_position ( 0.00528866 0.000223529 0.044735 );
+            min(p_rgh)_position ( 0.00437504 0.000360047 0.0647002 );
+            max(p_rgh)_position ( 0.0696306 0.0071338 0.0645974 );
+            min(p)_position ( 0.06853629999999999 0.0110769 0.0651822 );
+            max(p)_position ( 0.0685062 0.0111063 0 );
+            min(T)_position ( 0.0694466 0.00873494 0.009646999999999999 );
+            max(T)_position ( 0.00438975 2.68724e-05 0.0637298 );
+        }
+    }
+}
+
+
+// ************************************************************************* //
