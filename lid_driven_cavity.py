@@ -15,7 +15,8 @@ def top_surface(x):
     return np.isclose(x[1], 1.0)
 
 
-def lid_driven_cavity(domain):
+def lid_driven_cavity():
+    domain = create_unit_square(MPI.COMM_WORLD, 50, 50, CellType.triangle)
     # Define Taylor-Hood element (P2-P1)
     element_u = basix.ufl.element(
         "Lagrange", domain.basix_cell(), 2, shape=(domain.geometry.dim,)
@@ -146,7 +147,7 @@ def advection_diffusion(domain, velocity_field):
     source_value = lambda t: 100 if t <= 300 else 0
     source = fem.Constant(domain, PETSc.ScalarType(source_value(t=0)))
 
-    dt = fem.Constant(domain, PETSc.ScalarType(100))
+    dt = fem.Constant(domain, PETSc.ScalarType(20))
 
     vdim = domain.topology.dim
     num_cells = domain.topology.index_map(vdim).size_local
@@ -179,7 +180,7 @@ def advection_diffusion(domain, velocity_field):
     ksp.getPC().setFactorSolverType("mumps")
     ksp.setErrorIfNotConverged(True)
 
-    final_time = 6000
+    final_time = 2000
 
     t = fem.Constant(domain, PETSc.ScalarType(0))
     n = ufl.FacetNormal(domain)
@@ -198,7 +199,10 @@ def advection_diffusion(domain, velocity_field):
         top_flux_value = fem.assemble_scalar(
             fem.form(-D * ufl.dot(ufl.grad(u), n) * ds)
         )
-        top_flux.append(top_flux_value)
+        advective_flux = fem.assemble_scalar(
+            fem.form(ufl.inner(velocity_field, n) * u * ds)
+        )
+        top_flux.append(top_flux_value + advective_flux)
         times.append(float(t.value))
         # print(f"Top Flux: {top_flux_value:.3e}")
 
@@ -222,8 +226,7 @@ if __name__ == "__main__":
     force_cfd = False
 
     if force_cfd:
-        domain = create_unit_square(MPI.COMM_WORLD, 50, 50, CellType.triangle)
-        lid_driven_cavity(domain)
+        lid_driven_cavity()
 
     import matplotlib.pyplot as plt
     from scipy.integrate import cumulative_trapezoid
