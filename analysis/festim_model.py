@@ -1,45 +1,69 @@
 import festim as F
 from openmc2dolfinx import UnstructuredMeshReader
 import dolfinx
-from dolfinx.log import set_log_level, LogLevel
 import numpy as np
 import matplotlib.pyplot as plt
 from libra_toolbox.tritium.model import quantity_to_activity, ureg
 from scipy.integrate import cumulative_trapezoid
 import requests
+from dolfinx import fem
+import basix
+from foam2dolfinx import OpenFOAMReader
+import ufl
+import adios4dolfinx
 
+# # read OpenFOAM data
+# my_of_reader = OpenFOAMReader(filename="foam_data/pv.foam", cell_type=10)
+# u_wedge = my_of_reader.create_dolfinx_function(t=870.0, name="U")
+# u_wedge.x.array[:] /= 2
+
+adios4dolfinx.read_function(
+    "../lid_driven_cavity" u_in, time=0.0, name="Output"
+)
+
+
+def read_openmc_data(wedge_mesh):
+    """Read OpenMC data from a file."""
+    reader = UnstructuredMeshReader("um_tbr.vtk")
+    openmc_full = reader.create_dolfinx_function(data="mean")
+
+    full_mesh = openmc_full.function_space.mesh
+    # convert openmc mesh from cm to meters
+    full_mesh.geometry.x[:] /= 100
+
+    # translate the points to 0,0,0 origin
+    full_mesh.geometry.x[:] -= np.array([5.87, 0.6, 1.06766])
+
+    degree = 1  # Set polynomial degree
+    cell = ufl.Cell("tetrahedron")
+    element = basix.ufl.element("Lagrange", cell.cellname(), degree, shape=())
+    V = fem.functionspace(wedge_mesh, element)
+    openmc_wedge = fem.Function(V)
+
+    F.helpers.nmm_interpolate(openmc_wedge, openmc_full)
+
+    return openmc_wedge
+
+
+dolfinx_mesh = u_wedge.function_space.mesh
+
+tritium_source_term = read_openmc_data(dolfinx_mesh)
 
 irradiation_time = 12 * 3600  # 12 hours
 
 
 # NOTE need to override these methods in ParticleSource until a
 # new version of festim is released
-class ParticleSourceFromOpenMC(F.ParticleSource):
-    @property
-    def temperature_dependent(self):
-        return False
-
-    @property
-    def time_dependent(self):
-        return True
+class ValueFromOpenMC(F.Value):
+    explicit_time_dependent = True
+    temperature_dependent = False
 
     def update(self, t):
         if t < irradiation_time:
             return
         else:
-            self.value_fenics.x.array[:] = 0.0
+            self.fenics_object.x.array[:] = 0.0
 
-
-# convert openmc result
-reader = UnstructuredMeshReader("um_tbr.vtk")
-reader.create_dolfinx_mesh()
-
-
-dolfinx_mesh = reader.dolfinx_mesh
-# convert openmc mesh from cm to meters
-dolfinx_mesh.geometry.x[:] /= 100
-
-tritium_source_term = reader.create_dolfinx_function("mean")
 
 neutron_rate = 1.2e8  # n/s
 percm3_to_perm3 = 1e6
@@ -49,6 +73,15 @@ tritium_source_term.x.array[:] *= neutron_rate
 
 # convert source term from T/s/cm3 to T/s/m3
 tritium_source_term.x.array[:] *= percm3_to_perm3
+from mpi4py import MPI
+
+writer = dolfinx.io.VTXWriter(
+    MPI.COMM_WORLD, "tritium_source.bp", tritium_source_term, "BP5"
+)
+writer.write(t=0)
+
+writer = dolfinx.io.VTXWriter(MPI.COMM_WORLD, "velocity.bp", u_wedge, "BP5")
+writer.write(t=0)
 
 my_model = F.HydrogenTransportProblem()
 
@@ -61,6 +94,21 @@ class TopSurface(F.SurfaceSubdomain):
         return dolfinx.mesh.locate_entities_boundary(
             mesh, mesh.topology.dim - 1, lambda x: np.isclose(x[2], z_top)
         )
+
+
+# NOTE need to overrid this because ParticleSource won't accept a F.Value as value
+# need to fix in FESTIM
+class SourceFromOpenMC(F.ParticleSource):
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        if isinstance(value, F.Value):
+            self._value = value
+        else:
+            self._value = F.Value(value)
 
 
 T = F.Species("T")
@@ -76,8 +124,17 @@ top_boundary = TopSurface(id=2)
 
 my_model.subdomains = [volume, top_boundary]
 
+one_liter = 1e-3  # m^3
+total_tbr = 3e-3  # T/n
 my_model.sources = [
-    ParticleSourceFromOpenMC(value=tritium_source_term, volume=volume, species=T),
+    # SourceFromOpenMC(value=ValueFromOpenMC(tritium_source_term), volume=volume, species=T),
+    F.ParticleSource(
+        value=lambda t: total_tbr / one_liter * neutron_rate
+        if t <= irradiation_time
+        else 0,
+        volume=volume,
+        species=T,
+    ),
 ]
 
 my_model.boundary_conditions = [
@@ -85,6 +142,14 @@ my_model.boundary_conditions = [
 ]
 
 my_model.temperature = 650 + 273.15  # 650 degC
+
+my_model.advection_terms = [
+    F.AdvectionTerm(
+        velocity=u_wedge,
+        subdomain=volume,
+        species=T,
+    )
+]
 
 dt = F.Stepsize(
     3600,
@@ -101,11 +166,14 @@ my_model.settings = F.Settings(
     stepsize=dt,
 )
 
+
 top_release = F.SurfaceFlux(field=T, surface=top_boundary)
+inv = F.TotalVolume(field=T, volume=volume)
 
 my_model.exports = [
     F.VTXSpeciesExport("tritium_concentration.bp", field=T),
     top_release,
+    inv,
 ]
 
 # set_log_level(LogLevel.INFO)
@@ -115,6 +183,10 @@ my_model.initialise()
 my_model.run()
 
 # Plot results
+wedge_angle = 15  # degrees  according to Online Protractor
+top_release_full_surface = np.array(top_release.data) * 360 / wedge_angle
+
+
 import morethemes as mt
 
 mt.set_theme("minimal")
@@ -122,12 +194,14 @@ s_to_day = 1 / 3600 / 24
 
 fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
 
-axs[0].plot(np.array(top_release.t) * s_to_day, top_release.data)
+axs[0].plot(np.array(top_release.t) * s_to_day, top_release_full_surface)
 axs[0].set_ylabel("Tritium flux [T s-1]")
 
 # compute cumulative release as int(release dt)
 
-cumulative_release = cumulative_trapezoid(top_release.data, x=top_release.t, initial=0)
+cumulative_release = cumulative_trapezoid(
+    top_release_full_surface, x=top_release.t, initial=0
+)
 
 # convert to Bq
 cumulative_release = (
