@@ -46,7 +46,7 @@ def festim_sim(vel_factor, folder):
 
     my_model.subdomains = [volume, top_boundary]
 
-    irradiation_time = 1
+    irradiation_time = 100
     my_model.sources = [
         F.ParticleSource(
             value=lambda t: 100 if t <= irradiation_time else 0,

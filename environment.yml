@@ -5,13 +5,16 @@ channels:
 dependencies:
   - python
   - numpy
+  - ipykernel
   - pyvista
   - openmc
   - python-gmsh
   - matplotlib
-  - festim=2.0a0
+  - festim=2.0a2
   - pip
   - pip:
-    - git+https://github.com/LIBRA-project/libra-toolbox@v0.5
+    - libra-toolbox>=0.5
     - openmc-data-downloader
     - git+https://github.com/festim-dev/openmc2dolfinx
+    - git+https://github.com/festim-dev/foam2dolfinx
+    - morethemes
