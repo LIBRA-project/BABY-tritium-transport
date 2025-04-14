@@ -17,13 +17,17 @@ def top_surface(x):
 
 def lid_driven_cavity():
     domain = create_unit_square(MPI.COMM_WORLD, 50, 50, CellType.triangle)
+
     # Define Taylor-Hood element (P2-P1)
     element_u = basix.ufl.element(
         "Lagrange", domain.basix_cell(), 2, shape=(domain.geometry.dim,)
     )
     element_p = basix.ufl.element("Lagrange", domain.basix_cell(), 1)
     mixed_ele = basix.ufl.mixed_element([element_u, element_p])
+
+    # define function space and colla
     W = fem.functionspace(domain, mixed_ele)
+    V_collapsed, _ = W.sub(0).collapse()
 
     # Functions and test functions
     up = fem.Function(W)
@@ -31,48 +35,27 @@ def lid_driven_cavity():
     v, q = v_q
     u, p = ufl.split(up)
 
-    V_collapsed, _ = W.sub(0).collapse()
-
     # Viscosity
     nu = 1e-03
 
-    # lid_u = fem.Function(V_collapsed)
-    # lid_u.interpolate(
-    #     lambda x: np.array([1e-4 * np.ones(x.shape[1]), np.zeros(x.shape[1])])
-    # )
-
-    # facets_lid = mesh.locate_entities_boundary(
-    #     domain, domain.topology.dim - 1, top_surface
-    # )
-    # dofs_lid = fem.locate_dofs_topological((W.sub(0), V_collapsed), 1, facets_lid)
-    # bc_lid = fem.dirichletbc(lid_u, dofs_lid, W.sub(0))
-
-    def lid(x):
-        return np.isclose(x[1], 1)
-
-    class LidVelocity:
-        def __call__(self, x):
-            values = np.zeros((2, x.shape[1]), dtype=PETSc.ScalarType)
-            values[0] = np.ones((1, x.shape[1]), dtype=PETSc.ScalarType) * 1e-4
-            values[1] = np.zeros((1, x.shape[1]), dtype=PETSc.ScalarType)
-            return values
-
-    lid_velocity = LidVelocity()
-
+    # top wall velocity bc
     lid_u = fem.Function(V_collapsed)
-    lid_u.interpolate(lid_velocity)
+    lid_u.interpolate(
+        lambda x: np.array([1e-4 * np.ones(x.shape[1]), np.zeros(x.shape[1])])
+    )
 
-    facets_lid = mesh.locate_entities_boundary(domain, domain.topology.dim - 1, lid)
+    facets_lid = mesh.locate_entities_boundary(
+        domain, domain.topology.dim - 1, top_surface
+    )
     dofs_lid = fem.locate_dofs_topological((W.sub(0), V_collapsed), 1, facets_lid)
     bc_lid = fem.dirichletbc(lid_u, dofs_lid, W.sub(0))
 
-    # No-slip walls
+    # No-slip walls bcs
     def walls(x):
         return np.isclose(x[0], 0.0) | np.isclose(x[0], 1.0) | np.isclose(x[1], 0.0)
 
     wall_facets = mesh.locate_entities_boundary(domain, domain.topology.dim - 1, walls)
     wall_dofs = fem.locate_dofs_topological((W.sub(0), V_collapsed), 1, wall_facets)
-
     u_noslip = fem.Function(V_collapsed)
     u_noslip.x.array[:] = 0.0
     bc_walls = fem.dirichletbc(u_noslip, wall_dofs, W.sub(0))
@@ -91,7 +74,7 @@ def lid_driven_cavity():
 
     J = ufl.derivative(F, up)
 
-    # set_log_level(LogLevel.INFO)
+    set_log_level(LogLevel.INFO)
 
     # Create nonlinear problem and solver
     problem = NonlinearProblem(F, up, bcs, J)
@@ -106,7 +89,6 @@ def lid_driven_cavity():
     option_prefix = ksp.getOptionsPrefix()
     opts[f"{option_prefix}ksp_type"] = "gmres"
     opts[f"{option_prefix}pc_type"] = "gamg"
-    opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
     ksp.setFromOptions()
 
     # Solve
@@ -118,9 +100,11 @@ def lid_driven_cavity():
     uh.name = "velocity"
     ph.name = "pressure"
 
+    # Save solution to file
     writer = io.VTXWriter(MPI.COMM_WORLD, "lid_driven_cavity.bp", uh, "BP5")
     writer.write(t=0)
 
+    # write checkpoints file
     adios4dolfinx.write_mesh("lid_driven_cavity_cp.bp", mesh=domain)
     adios4dolfinx.write_function("lid_driven_cavity_cp.bp", uh, time=0.0)
 
@@ -144,6 +128,7 @@ def advection_diffusion(domain, velocity_field):
     dofs_lid = fem.locate_dofs_topological(V, 1, facets_lid)
     bc_top = fem.dirichletbc(fem.Constant(domain, PETSc.ScalarType(0)), dofs_lid, V)
 
+    # source term only active for first 300 seconds then zero
     source_value = lambda t: 100 if t <= 300 else 0
     source = fem.Constant(domain, PETSc.ScalarType(source_value(t=0)))
 
@@ -186,13 +171,12 @@ def advection_diffusion(domain, velocity_field):
     n = ufl.FacetNormal(domain)
     ds = ufl.Measure("ds", domain=domain)
 
-    times, top_flux = [], []
+    times, top_flux, inventory = [], [], []
     while t.value < final_time:
-        # print(f"Current Time: {t.value:.0f}, Final Time: {final_time:.0f}")
         source.value = source_value(t=t.value)
         t.value += dt.value
 
-        nb_its, converged = solver.solve(u)
+        solver.solve(u)
 
         u_n.x.array[:] = u.x.array[:]
 
@@ -202,11 +186,15 @@ def advection_diffusion(domain, velocity_field):
         advective_flux = fem.assemble_scalar(
             fem.form(ufl.inner(velocity_field, n) * u * ds)
         )
-        top_flux.append(top_flux_value + advective_flux)
-        times.append(float(t.value))
-        # print(f"Top Flux: {top_flux_value:.3e}")
 
-    return times, top_flux
+        inventory_value = fem.assemble_scalar(fem.form(u * dx))
+
+        top_flux.append(top_flux_value + advective_flux)
+        # top_flux.append(advective_flux)
+        times.append(float(t.value))
+        inventory.append(inventory_value)
+
+    return times, top_flux, inventory
 
 
 def read_velocity(filename):
@@ -232,25 +220,27 @@ if __name__ == "__main__":
     from scipy.integrate import cumulative_trapezoid
 
     # Run the advection-diffusion simulation
-    fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
+    fig, axs = plt.subplots(3, 1, figsize=(6, 8), sharex=True)
     for scaling_factor in np.linspace(1, 1000, num=5):
         print(f"Scaling factor: {scaling_factor:.1f}")
         u_ldc = read_velocity("lid_driven_cavity_cp.bp")
         u_ldc.x.array[:] *= scaling_factor
-        t, top_flux = advection_diffusion(
+        t, top_flux, inventory = advection_diffusion(
             domain=u_ldc.function_space.mesh, velocity_field=u_ldc
-        )
-
-        np.savetxt(
-            f"top_flux_{scaling_factor}.csv", np.array([t, top_flux]).T, delimiter=","
         )
 
         axs[0].plot(t, top_flux, label="Top Flux")
 
         integral_flux = cumulative_trapezoid(top_flux, x=t, initial=0)
         axs[1].plot(t, integral_flux, label=f"{scaling_factor:.1f}x")
+
+        axs[2].plot(t, inventory, label=f"{scaling_factor:.1f}x")
+
     axs[0].set_ylabel("Flux [s-1]")
-    axs[1].set_ylabel("Cumulative flux[]")
+    axs[1].set_ylabel("Cumulative flux")
+    axs[2].set_ylabel("Inventory")
     axs[1].set_xlabel("Time")
+
+    plt.tight_layout()
     plt.legend()
     plt.show()
