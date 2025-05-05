@@ -10,9 +10,6 @@ import requests
 
 
 irradiation_time = 12 * 3600  # 12 hours
-TBR = 2.00e-3
-salt_volume = 1  # L
-salt_volume *= 1e-3  # m3
 
 
 # NOTE need to override these methods in ParticleSource until a
@@ -39,17 +36,23 @@ reader.create_dolfinx_mesh()
 
 
 dolfinx_mesh = reader.dolfinx_mesh
+# convert openmc mesh from cm to meters
 dolfinx_mesh.geometry.x[:] /= 100
 
 tritium_source_term = reader.create_dolfinx_function("mean")
 
 neutron_rate = 1.2e8  # n/s
 percm3_to_perm3 = 1e6
-tritium_source_term.x.array[:] *= neutron_rate * percm3_to_perm3
+
+# convert source term from T/n/cm3 to T/s/cm3
+tritium_source_term.x.array[:] *= neutron_rate
+
+# convert source term from T/s/cm3 to T/s/m3
+tritium_source_term.x.array[:] *= percm3_to_perm3
 
 my_model = F.HydrogenTransportProblem()
 
-my_model.mesh = F.Mesh(mesh=reader.dolfinx_mesh)
+my_model.mesh = F.Mesh(mesh=dolfinx_mesh)
 
 
 class TopSurface(F.SurfaceSubdomain):
@@ -111,7 +114,10 @@ my_model.initialise()
 
 my_model.run()
 
+# Plot results
+import morethemes as mt
 
+mt.set_theme("minimal")
 s_to_day = 1 / 3600 / 24
 
 fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
@@ -136,7 +142,7 @@ plt.xlabel("Time [day]")
 
 
 # read experimental data
-url = "https://raw.githubusercontent.com/LIBRA-project/BABY-1L-run-1/refs/tags/v0.4/data/processed_data.json"
+url = "https://raw.githubusercontent.com/LIBRA-project/BABY-1L-run-1/refs/tags/v0.5/data/processed_data.json"
 
 experimental_data = requests.get(url).json()
 
