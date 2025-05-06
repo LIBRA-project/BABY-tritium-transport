@@ -10,21 +10,38 @@ from dolfinx import fem
 import basix
 from foam2dolfinx import OpenFOAMReader
 import ufl
-import adios4dolfinx
+from mpi4py import MPI
 
-# # read OpenFOAM data
-# my_of_reader = OpenFOAMReader(filename="foam_data/pv.foam", cell_type=10)
-# u_wedge = my_of_reader.create_dolfinx_function(t=870.0, name="U")
-# u_wedge.x.array[:] /= 2
 
-adios4dolfinx.read_function(
-    "../lid_driven_cavity" u_in, time=0.0, name="Output"
-)
+# NOTE need to override these methods in ParticleSource until a
+# new version of festim is released
+class ValueFromOpenMC(F.Value):
+    explicit_time_dependent = True
+    temperature_dependent = False
+
+    def update(self, t):
+        if t < irradiation_time:
+            return
+        else:
+            self.fenics_object.x.array[:] = 0.0
+
+
+class SourceFromOpenMC(F.ParticleSource):
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        if isinstance(value, F.Value):
+            self._value = value
+        else:
+            self._value = F.Value(value)
 
 
 def read_openmc_data(wedge_mesh):
     """Read OpenMC data from a file."""
-    reader = UnstructuredMeshReader("um_tbr.vtk")
+    reader = UnstructuredMeshReader("um_tbr_rem.vtk")
     openmc_full = reader.create_dolfinx_function(data="mean")
 
     full_mesh = openmc_full.function_space.mesh
@@ -45,70 +62,21 @@ def read_openmc_data(wedge_mesh):
     return openmc_wedge
 
 
-dolfinx_mesh = u_wedge.function_space.mesh
+# read OpenFOAM data
+my_of_reader = OpenFOAMReader(filename="foam_data/pv.foam", cell_type=10)
+u_wedge = my_of_reader.create_dolfinx_function(t=870.0, name="U")
+# option to write velocity field to file to check
+# writer = dolfinx.io.VTXWriter(MPI.COMM_WORLD, "velocity.bp", u_wedge, "BP5")
+# writer.write(t=0)
 
-tritium_source_term = read_openmc_data(dolfinx_mesh)
 
 irradiation_time = 12 * 3600  # 12 hours
 
-
-# NOTE need to override these methods in ParticleSource until a
-# new version of festim is released
-class ValueFromOpenMC(F.Value):
-    explicit_time_dependent = True
-    temperature_dependent = False
-
-    def update(self, t):
-        if t < irradiation_time:
-            return
-        else:
-            self.fenics_object.x.array[:] = 0.0
-
-
-neutron_rate = 1.2e8  # n/s
-percm3_to_perm3 = 1e6
-
-# convert source term from T/n/cm3 to T/s/cm3
-tritium_source_term.x.array[:] *= neutron_rate
-
-# convert source term from T/s/cm3 to T/s/m3
-tritium_source_term.x.array[:] *= percm3_to_perm3
-from mpi4py import MPI
-
-writer = dolfinx.io.VTXWriter(
-    MPI.COMM_WORLD, "tritium_source.bp", tritium_source_term, "BP5"
-)
-writer.write(t=0)
-
-writer = dolfinx.io.VTXWriter(MPI.COMM_WORLD, "velocity.bp", u_wedge, "BP5")
-writer.write(t=0)
-
 my_model = F.HydrogenTransportProblem()
 
-my_model.mesh = F.Mesh(mesh=dolfinx_mesh)
-
-
-class TopSurface(F.SurfaceSubdomain):
-    def locate_boundary_facet_indices(self, mesh):
-        z_top = mesh.geometry.x[:, 2].max()
-        return dolfinx.mesh.locate_entities_boundary(
-            mesh, mesh.topology.dim - 1, lambda x: np.isclose(x[2], z_top)
-        )
-
-
-# NOTE need to overrid this because ParticleSource won't accept a F.Value as value
-# need to fix in FESTIM
-class SourceFromOpenMC(F.ParticleSource):
-    @property
-    def value(self):
-        return self._value
-
-    @value.setter
-    def value(self, value):
-        if isinstance(value, F.Value):
-            self._value = value
-        else:
-            self._value = F.Value(value)
+my_model.mesh = F.MeshFromXDMF(
+    volume_file="mesh/mesh_domains.xdmf", facet_file="mesh/mesh_boundaries.xdmf"
+)
 
 
 T = F.Species("T")
@@ -116,40 +84,42 @@ my_model.species = [T]
 
 flibe_salt = F.Material(D_0=3.12e-7, E_D=0.37)
 flinak_salt = F.Material(D_0=4.01e-7, E_D=0.31)
-
 salt = flibe_salt
-
-volume = F.VolumeSubdomain(id=1, material=salt)
-top_boundary = TopSurface(id=2)
-
+volume = F.VolumeSubdomain(id=6, material=salt)
+top_boundary = F.SurfaceSubdomain(id=7)
 my_model.subdomains = [volume, top_boundary]
 
-one_liter = 1e-3  # m^3
-total_tbr = 3e-3  # T/n
+
+tritium_source_term = read_openmc_data(my_model.mesh.mesh)
+neutron_rate = 1.2e8  # n/s
+percm3_to_perm3 = 1e6
+# convert source term from T/n/cm3 to T/s/cm3
+tritium_source_term.x.array[:] *= neutron_rate
+# convert source term from T/s/cm3 to T/s/m3
+tritium_source_term.x.array[:] *= percm3_to_perm3
+# option to write source term to file to check
+# writer = dolfinx.io.VTXWriter(
+#     MPI.COMM_WORLD, "tritium_source.bp", tritium_source_term, "BP5"
+# )
+# writer.write(t=0)
 my_model.sources = [
-    # SourceFromOpenMC(value=ValueFromOpenMC(tritium_source_term), volume=volume, species=T),
-    F.ParticleSource(
-        value=lambda t: total_tbr / one_liter * neutron_rate
-        if t <= irradiation_time
-        else 0,
-        volume=volume,
-        species=T,
+    SourceFromOpenMC(
+        value=ValueFromOpenMC(tritium_source_term), volume=volume, species=T
     ),
 ]
 
 my_model.boundary_conditions = [
-    F.FixedConcentrationBC(subdomain=top_boundary, species=T, value=0.0)
+    F.FixedConcentrationBC(subdomain=top_boundary, species=T, value=0)
 ]
 
 my_model.temperature = 650 + 273.15  # 650 degC
 
-my_model.advection_terms = [
-    F.AdvectionTerm(
-        velocity=u_wedge,
-        subdomain=volume,
-        species=T,
-    )
-]
+my_advection = F.AdvectionTerm(
+    velocity=u_wedge,
+    subdomain=volume,
+    species=T,
+)
+my_model.advection_terms = [my_advection]
 
 dt = F.Stepsize(
     3600,
@@ -166,12 +136,11 @@ my_model.settings = F.Settings(
     stepsize=dt,
 )
 
-
 top_release = F.SurfaceFlux(field=T, surface=top_boundary)
 inv = F.TotalVolume(field=T, volume=volume)
 
 my_model.exports = [
-    F.VTXSpeciesExport("tritium_concentration.bp", field=T),
+    F.VTXSpeciesExport("tritium_concentration_with_advection.bp", field=T),
     top_release,
     inv,
 ]
@@ -179,6 +148,12 @@ my_model.exports = [
 # set_log_level(LogLevel.INFO)
 
 my_model.initialise()
+
+# option to write velocity field to file to check
+# writer = dolfinx.io.VTXWriter(
+#     MPI.COMM_WORLD, "velocity_festim.bp", my_advection.velocity.fenics_object, "BP5"
+# )
+# writer.write(t=0)
 
 my_model.run()
 

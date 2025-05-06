@@ -156,8 +156,8 @@ def advection_diffusion(domain, velocity_field):
     )
     solver = NewtonSolver(MPI.COMM_WORLD, problem)
     solver.convergence_criterion = "incremental"
-    solver.atol = 1e-8
-    solver.rtol = 1e-8
+    solver.atol = 1e-12
+    solver.rtol = 1e-12
     solver.max_it = 30
     ksp = solver.krylov_solver
     ksp.setType("preonly")
@@ -171,7 +171,7 @@ def advection_diffusion(domain, velocity_field):
     n = ufl.FacetNormal(domain)
     ds = ufl.Measure("ds", domain=domain)
 
-    times, top_flux, inventory = [], [], []
+    times, top_flux = [], []
     while t.value < final_time:
         source.value = source_value(t=t.value)
         t.value += dt.value
@@ -187,14 +187,10 @@ def advection_diffusion(domain, velocity_field):
             fem.form(ufl.inner(velocity_field, n) * u * ds)
         )
 
-        inventory_value = fem.assemble_scalar(fem.form(u * dx))
-
         top_flux.append(top_flux_value + advective_flux)
-        # top_flux.append(advective_flux)
         times.append(float(t.value))
-        inventory.append(inventory_value)
 
-    return times, top_flux, inventory
+    return times, top_flux
 
 
 def read_velocity(filename):
@@ -220,12 +216,12 @@ if __name__ == "__main__":
     from scipy.integrate import cumulative_trapezoid
 
     # Run the advection-diffusion simulation
-    fig, axs = plt.subplots(3, 1, figsize=(6, 8), sharex=True)
+    fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
     for scaling_factor in np.linspace(1, 1000, num=5):
         print(f"Scaling factor: {scaling_factor:.1f}")
         u_ldc = read_velocity("lid_driven_cavity_cp.bp")
         u_ldc.x.array[:] *= scaling_factor
-        t, top_flux, inventory = advection_diffusion(
+        t, top_flux = advection_diffusion(
             domain=u_ldc.function_space.mesh, velocity_field=u_ldc
         )
 
@@ -234,11 +230,8 @@ if __name__ == "__main__":
         integral_flux = cumulative_trapezoid(top_flux, x=t, initial=0)
         axs[1].plot(t, integral_flux, label=f"{scaling_factor:.1f}x")
 
-        axs[2].plot(t, inventory, label=f"{scaling_factor:.1f}x")
-
     axs[0].set_ylabel("Flux [s-1]")
     axs[1].set_ylabel("Cumulative flux")
-    axs[2].set_ylabel("Inventory")
     axs[1].set_xlabel("Time")
 
     plt.tight_layout()

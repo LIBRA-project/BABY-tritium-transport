@@ -41,7 +41,7 @@ def festim_sim(vel_factor, folder):
     T = F.Species("T")
     my_model.species = [T]
 
-    volume = F.VolumeSubdomain(id=1, material=F.Material(D_0=1e-4, E_D=0.1))
+    volume = F.VolumeSubdomain(id=1, material=F.Material(D_0=1e-04, E_D=0.1))
     top_boundary = TopSurface(id=2)
 
     my_model.subdomains = [volume, top_boundary]
@@ -71,7 +71,7 @@ def festim_sim(vel_factor, folder):
 
     dt = F.Stepsize(
         1,
-        growth_factor=1.2,
+        growth_factor=1.0,
         cutback_factor=0.9,
         target_nb_iterations=4,
         milestones=[irradiation_time],

@@ -21,7 +21,7 @@ for t, release, value in zip(ts, release_data, values):
 
     cumulative_release = cumulative_trapezoid(release, x=t, initial=0)
 
-    axs[1].plot(t, cumulative_release, label=f"vel factor {value}")
+    axs[1].plot(t, cumulative_release, label=f"vel factor {value}", marker="o")
 
 axs[0].set_ylabel("Tritium flux [T s-1]")
 axs[1].set_ylabel("Cumulative tritium release [Bq]")
