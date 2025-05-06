@@ -182,3 +182,6 @@ cython_debug/
 
 # festim files
 *.bp
+
+*.Identifier
+analysis/foam_data/
