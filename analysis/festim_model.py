@@ -9,7 +9,22 @@ from scipy.integrate import cumulative_trapezoid
 import requests
 
 
-irradiation_time = 12 * 3600  # 12 hours
+def get_total_irradiation_time(data: dict) -> float:
+    duration = 0
+    irradiations = data["irradiations"]
+    for irr in irradiations:
+        start = irr["start_time"]["value"] * ureg(irr["start_time"]["unit"])
+        end = irr["stop_time"]["value"] * ureg(irr["stop_time"]["unit"])
+        duration += (end - start).to(ureg("s")).magnitude
+    return duration
+
+
+# read experimental data
+url = "https://raw.githubusercontent.com/LIBRA-project/BABY-1L-run-1/refs/tags/v0.5/data/processed_data.json"
+
+experimental_data = requests.get(url).json()
+
+irradiation_time = get_total_irradiation_time(experimental_data)
 
 
 # NOTE need to override these methods in ParticleSource until a
@@ -41,7 +56,14 @@ dolfinx_mesh.geometry.x[:] /= 100
 
 tritium_source_term = reader.create_dolfinx_function("mean")
 
-neutron_rate = 1.2e8  # n/s
+neutron_rate = experimental_data["neutron_rate_used_in_model"]["value"] * ureg(
+    experimental_data["neutron_rate_used_in_model"]["unit"]
+)
+neutron_rate = neutron_rate.to(ureg.n * ureg.s**-1).magnitude
+
+correction_factor = 1.20
+neutron_rate *= correction_factor
+
 percm3_to_perm3 = 1e6
 
 # convert source term from T/n/cm3 to T/s/cm3
@@ -87,8 +109,8 @@ my_model.boundary_conditions = [
 my_model.temperature = 650 + 273.15  # 650 degC
 
 dt = F.Stepsize(
-    3600,
-    growth_factor=1.2,
+    100,
+    growth_factor=1.1,
     cutback_factor=0.9,
     target_nb_iterations=4,
     milestones=[irradiation_time],
@@ -110,56 +132,52 @@ my_model.exports = [
 
 # set_log_level(LogLevel.INFO)
 
-my_model.initialise()
+if __name__ == "__main__":
+    my_model.initialise()
 
-my_model.run()
+    my_model.run()
 
-# Plot results
-import morethemes as mt
+    # Plot results
+    import morethemes as mt
 
-mt.set_theme("minimal")
-s_to_day = 1 / 3600 / 24
+    mt.set_theme("minimal")
+    s_to_day = 1 / 3600 / 24
 
-fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
+    fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
 
-axs[0].plot(np.array(top_release.t) * s_to_day, top_release.data)
-axs[0].set_ylabel("Tritium flux [T s-1]")
+    axs[0].plot(np.array(top_release.t) * s_to_day, top_release.data)
+    axs[0].set_ylabel("Tritium flux [T s-1]")
 
-# compute cumulative release as int(release dt)
+    # compute cumulative release as int(release dt)
 
-cumulative_release = cumulative_trapezoid(top_release.data, x=top_release.t, initial=0)
+    cumulative_release = cumulative_trapezoid(
+        top_release.data, x=top_release.t, initial=0
+    )
 
-# convert to Bq
-cumulative_release = (
-    quantity_to_activity(ureg.Quantity(cumulative_release, "particle"))
-    .to(ureg.Bq)
-    .magnitude
-)
+    # convert to Bq
+    cumulative_release = (
+        quantity_to_activity(ureg.Quantity(cumulative_release, "particle"))
+        .to(ureg.Bq)
+        .magnitude
+    )
 
-axs[1].plot(np.array(top_release.t) * s_to_day, cumulative_release, label="FESTIM")
-axs[1].set_ylabel("Cumulative tritium release [Bq]")
-plt.xlabel("Time [day]")
+    axs[1].plot(np.array(top_release.t) * s_to_day, cumulative_release, label="FESTIM")
+    axs[1].set_ylabel("Cumulative tritium release [Bq]")
+    plt.xlabel("Time [day]")
 
+    cumulative_release_exp = experimental_data["cumulative_tritium_release"]["IV"][
+        "total"
+    ]["value"]
+    sampling_times = experimental_data["cumulative_tritium_release"]["IV"][
+        "sampling_times"
+    ]["value"]
 
-# read experimental data
-url = "https://raw.githubusercontent.com/LIBRA-project/BABY-1L-run-1/refs/tags/v0.5/data/processed_data.json"
+    axs[1].scatter(sampling_times, cumulative_release_exp, label="Experiment")
 
-experimental_data = requests.get(url).json()
+    axs[1].legend()
+    axs[1].set_ylim(bottom=0)
 
-cumulative_release_exp = experimental_data["cumulative_tritium_release"]["IV"]["total"][
-    "value"
-]
-sampling_times = experimental_data["cumulative_tritium_release"]["IV"][
-    "sampling_times"
-]["value"]
+    plt.sca(axs[1])
+    plt.axvspan(0, irradiation_time * s_to_day, facecolor="#EF5B5B", alpha=0.5)
 
-axs[1].scatter(sampling_times, cumulative_release_exp, label="Experiment")
-
-axs[1].legend()
-axs[1].set_ylim(bottom=0)
-
-plt.sca(axs[1])
-plt.axvspan(0, irradiation_time * s_to_day, facecolor="#EF5B5B", alpha=0.5)
-
-
-plt.show()
+    plt.show()
