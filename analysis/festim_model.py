@@ -9,6 +9,18 @@ from scipy.integrate import cumulative_trapezoid
 import requests
 
 
+class OpenMCValue(F.Value):
+    @property
+    def explicit_time_dependent(self):
+        return True
+
+    def update(self, t):
+        if t < irradiation_time:
+            return
+        else:
+            self.fenics_object.x.array[:] = 0.0
+
+
 def get_total_irradiation_time(data: dict) -> float:
     duration = 0
     irradiations = data["irradiations"]
@@ -25,24 +37,6 @@ url = "https://raw.githubusercontent.com/LIBRA-project/BABY-1L-run-1/refs/tags/v
 experimental_data = requests.get(url).json()
 
 irradiation_time = get_total_irradiation_time(experimental_data)
-
-
-# NOTE need to override these methods in ParticleSource until a
-# new version of festim is released
-class ParticleSourceFromOpenMC(F.ParticleSource):
-    @property
-    def temperature_dependent(self):
-        return False
-
-    @property
-    def time_dependent(self):
-        return True
-
-    def update(self, t):
-        if t < irradiation_time:
-            return
-        else:
-            self.value_fenics.x.array[:] = 0.0
 
 
 # convert openmc result
@@ -99,7 +93,7 @@ top_boundary = TopSurface(id=2)
 my_model.subdomains = [volume, top_boundary]
 
 my_model.sources = [
-    ParticleSourceFromOpenMC(value=tritium_source_term, volume=volume, species=T),
+    F.ParticleSource(value=OpenMCValue(tritium_source_term), volume=volume, species=T),
 ]
 
 my_model.boundary_conditions = [

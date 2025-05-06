@@ -9,9 +9,10 @@ dependencies:
   - openmc
   - python-gmsh
   - matplotlib
-  - festim=2.0a0
+  - festim=2.0a3
   - pip
   - pip:
     - git+https://github.com/LIBRA-project/libra-toolbox@v0.5
     - openmc-data-downloader
     - git+https://github.com/festim-dev/openmc2dolfinx
+    - morthemes
