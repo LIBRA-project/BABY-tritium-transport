@@ -126,8 +126,6 @@ irradiation_time = get_total_irradiation_time()
 
 # ##### get material properties ##### #
 
-htm_D_flibe_mean = htm.diffusivities.filter(material="flibe").mean()
-
 htm_D_flibe = htm.diffusivities.filter(material="flibe").filter(author="calderoni")
 htm_S_flibe = htm.solubilities.filter(material="flibe").filter(author="calderoni")
 
@@ -149,7 +147,7 @@ inconel_Kr_0 = htm_recomb_inconel[1].pre_exp.magnitude
 inconel_E_Kr = htm_recomb_inconel[1].act_energy.magnitude
 
 
-flibe_D_0 *= 1.5
+flibe_D_0 *= 1
 
 # ##### create festim models ##### #
 
@@ -182,7 +180,7 @@ class SurfaceFluxFromEquation(F.SurfaceQuantity):
 
 def my_source(t):
     if t < irradiation_time:
-        return 2e08
+        return 2.19e8
     else:
         return 0.0
 
@@ -223,7 +221,7 @@ salt_metal_interface = F.Interface(
 )
 
 dt = F.Stepsize(
-    100,
+    1,
     growth_factor=1.1,
     cutback_factor=0.9,
     target_nb_iterations=4,
@@ -301,41 +299,41 @@ def festim_model(h2: bool):
 
     my_model.boundary_conditions = [
         F.FixedConcentrationBC(subdomain=flibe_top_surface, species=T, value=0.0),
-        MyParticleFluxBC(
-            value=recombination_flux,
-            subdomain=inconel_inner_side,
-            species_dependent_value={"c": T},
-            species=T,
-            volume_subdomain=vol_inconel,
-        ),
-        MyParticleFluxBC(
-            value=recombination_flux,
-            subdomain=inconel_inner_top,
-            species_dependent_value={"c": T},
-            species=T,
-            volume_subdomain=vol_inconel,
-        ),
-        MyParticleFluxBC(
-            value=recombination_flux,
-            subdomain=inconel_outer_bottom,
-            species_dependent_value={"c": T},
-            species=T,
-            volume_subdomain=vol_inconel,
-        ),
-        MyParticleFluxBC(
-            value=recombination_flux,
-            subdomain=inconel_outer_side,
-            species_dependent_value={"c": T},
-            species=T,
-            volume_subdomain=vol_inconel,
-        ),
-        MyParticleFluxBC(
-            value=recombination_flux,
-            subdomain=inconel_outer_top,
-            species_dependent_value={"c": T},
-            species=T,
-            volume_subdomain=vol_inconel,
-        ),
+        # MyParticleFluxBC(
+        #     value=recombination_flux,
+        #     subdomain=inconel_inner_side,
+        #     species_dependent_value={"c": T},
+        #     species=T,
+        #     volume_subdomain=vol_inconel,
+        # ),
+        # MyParticleFluxBC(
+        #     value=recombination_flux,
+        #     subdomain=inconel_inner_top,
+        #     species_dependent_value={"c": T},
+        #     species=T,
+        #     volume_subdomain=vol_inconel,
+        # ),
+        # MyParticleFluxBC(
+        #     value=recombination_flux,
+        #     subdomain=inconel_outer_bottom,
+        #     species_dependent_value={"c": T},
+        #     species=T,
+        #     volume_subdomain=vol_inconel,
+        # ),
+        # MyParticleFluxBC(
+        #     value=recombination_flux,
+        #     subdomain=inconel_outer_side,
+        #     species_dependent_value={"c": T},
+        #     species=T,
+        #     volume_subdomain=vol_inconel,
+        # ),
+        # MyParticleFluxBC(
+        #     value=recombination_flux,
+        #     subdomain=inconel_outer_top,
+        #     species_dependent_value={"c": T},
+        #     species=T,
+        #     volume_subdomain=vol_inconel,
+        # ),
     ]
 
     my_model.temperature = 650 + 273.15  # 650 degC
