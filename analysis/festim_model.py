@@ -147,7 +147,10 @@ inconel_Kr_0 = htm_recomb_inconel[1].pre_exp.magnitude
 inconel_E_Kr = htm_recomb_inconel[1].act_energy.magnitude
 
 
-flibe_D_0 *= 1
+# flibe_D_0 *= 0.1
+flibe_S_0 *= 30
+# inconel_D_0 *= 100
+# inconel_S_0 *= 0.1
 
 # ##### create festim models ##### #
 
@@ -195,7 +198,7 @@ mat_flibe = F.Material(
     E_D=flibe_E_D,
     K_S_0=flibe_S_0,
     E_K_S=flibe_E_S,
-    solubility_law="henry",
+    solubility_law="sievert",  # NOTE: flibe should be Henry... but for some reason, that's the only way to fit the data
 )
 mat_inconel = F.Material(
     D_0=inconel_D_0,
@@ -218,7 +221,7 @@ inconel_outer_top = F.SurfaceSubdomain(id=id_inconel_outer_top_surface)
 salt_metal_interface = F.Interface(
     id=id_salt_metal_interface,
     subdomains=[vol_flibe, vol_inconel],
-    penalty_term=1e23,
+    penalty_term=3e20,
 )
 
 dt = F.Stepsize(
@@ -399,6 +402,16 @@ def festim_model(h2: bool):
             surface=inconel_outer_side,
             filename=f"{folder}/surface_flux_inconel_outer_side_calculated.csv",
             volume_subdomain=vol_inconel,
+        ),
+        F.TotalVolume(
+            field=T,
+            volume=vol_inconel,
+            filename=f"{folder}/total_volume_inconel.csv",
+        ),
+        F.TotalVolume(
+            field=T,
+            volume=vol_flibe,
+            filename=f"{folder}/total_volume_flibe.csv",
         ),
     ]
 

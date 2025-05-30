@@ -45,7 +45,7 @@ def convert_med_to_xdmf(
 
 if __name__ == "__main__":
     correspondance_dict, cell_data_types = convert_med_to_xdmf(
-        medfilename="mesh_BABY_1L_wedge.med",
+        medfilename="mesh_BABY_1L_wedge_198Kcells.med",
     )
 
     print(correspondance_dict)
