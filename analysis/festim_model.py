@@ -73,7 +73,7 @@ class MyParticleFluxBC(F.FluxBCBase):
                 self.value_fenics = self.value(**kwargs)
 
 
-class SurfaceFluxFromGradient(F.SurfaceQuantity):
+class SurfaceFluxFromGradient(F.SurfaceFlux):
     def __init__(self, field, surface, filename, volume_subdomain):
         super().__init__(field=field, surface=surface, filename=filename)
         self.volume_subdomain = volume_subdomain
@@ -152,7 +152,8 @@ flibe_D_0 *= 1
 # ##### create festim models ##### #
 
 
-class SurfaceFluxFromEquation(F.SurfaceQuantity):
+# NOTE this doesn't work for the H2 case
+class SurfaceFluxFromEquation(F.SurfaceFlux):
     def __init__(self, field, surface, filename, volume_subdomain):
         super().__init__(field=field, surface=surface, filename=filename)
         self.volume_subdomain = volume_subdomain
@@ -221,7 +222,7 @@ salt_metal_interface = F.Interface(
 )
 
 dt = F.Stepsize(
-    1,
+    100,
     growth_factor=1.1,
     cutback_factor=0.9,
     target_nb_iterations=4,
