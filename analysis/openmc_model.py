@@ -502,7 +502,7 @@ def baby_model():
 
     settings = openmc.Settings()
 
-    src = A325_generator_diamond((x_c, y_c, z_c - 5.635), (1, 0, 0))
+    src = A325_generator_diamond((x_c, y_c, z_c - 5.635), (1, 0, 1E-5))
     # The underlying source is part of a separate experiment carried out inside the Nuclear Vault
     # src = A325_generator_diamond((x_c_ns - 20.5, y_c_ns, z_c_ns), (1, 0, 0))
     settings.source = src
