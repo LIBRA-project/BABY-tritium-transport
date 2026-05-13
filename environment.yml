@@ -12,7 +12,7 @@ dependencies:
   - festim=2.0a3
   - pip
   - pip:
-    - git+https://github.com/LIBRA-project/libra-toolbox@v0.5
+    - git+https://github.com/LIBRA-project/libra-toolbox@v0.9.3
     - openmc-data-downloader
     - git+https://github.com/festim-dev/openmc2dolfinx
-    - morthemes
+    - morethemes
